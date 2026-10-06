@@ -1,0 +1,13 @@
+{
+  "resources":{
+  "includes":[{
+    "pattern":"\\QMETA-INF/services/java.net.spi.URLStreamHandlerProvider\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/java.time.zone.ZoneRulesProvider\\E"
+  }, {
+    "pattern":"\\Qcommons.crypto.properties\\E"
+  }, {
+    "pattern":"\\Qorg/apache/commons/crypto/native/Linux/x86_64/libcommons-crypto.so\\E"
+  }]},
+  "bundles":[]
+}
