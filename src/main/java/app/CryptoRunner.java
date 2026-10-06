@@ -14,9 +14,16 @@ public final class CryptoRunner {
     }
 
     public static void run(Mode mode, Path sourceDir, Path targetDir) throws Exception {
+        run(mode, sourceDir, targetDir, false);
+    }
+
+    /**
+     * @param keepKey {@code true} — вернуть ключ вызывающему (режим 4); он обязан его затереть.
+     *                При {@code false} или при ошибке ключ затирается здесь, возвращается {@code null}.
+     */
+    public static byte[] run(Mode mode, Path sourceDir, Path targetDir, boolean keepKey) throws Exception {
         if (mode == Mode.DECRYPT
                 && !Files.isRegularFile(sourceDir.resolve(KeyDerivation.KEY_FILE_NAME))) {
-            // Сообщение намеренно без пути: он может быть предустановленным и скрытым от пользователя.
             throw new IllegalStateException("В выбранном каталоге не найден файл ключа.");
         }
 
@@ -28,10 +35,18 @@ public final class CryptoRunner {
             Arrays.fill(password, '\0');
         }
 
+        boolean handedOver = false;
         try {
             FileEncryptor.processDir(mode, sourceDir, targetDir, keyBytes);
+            if (keepKey) {
+                handedOver = true;
+                return keyBytes;
+            }
+            return null;
         } finally {
-            Arrays.fill(keyBytes, (byte) 0);
+            if (!handedOver) {
+                Arrays.fill(keyBytes, (byte) 0);
+            }
         }
     }
 

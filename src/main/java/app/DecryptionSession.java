@@ -3,6 +3,8 @@ package app;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.Stream;
@@ -28,6 +30,11 @@ public final class DecryptionSession implements AutoCloseable {
     private final Path directory;
     private final Thread shutdownHook;
     private boolean destroyed;
+
+    // Режим 4: заполняются только через open(source, dir) и armSync(..)
+    private Path source;
+    private byte[] key;
+    private Map<String, SourceSync.FileState> baseline;
 
     private DecryptionSession(Path directory) {
         this.directory = directory;
@@ -62,7 +69,7 @@ public final class DecryptionSession implements AutoCloseable {
         return Optional.empty();
     }
 
-    /** Подготавливает каталог и сразу регистрирует очистку — до начала расшифровки. */
+    /** Режим 3: без синхронизации. */
     public static DecryptionSession open(Path directory) throws IOException {
         Path dir = resolve(directory);
         Files.createDirectories(dir);
@@ -72,12 +79,32 @@ public final class DecryptionSession implements AutoCloseable {
         return session;
     }
 
+    /** Режим 4: при завершении изменения переносятся в {@code source}. */
+    public static DecryptionSession open(Path source, Path directory) throws IOException {
+        DecryptionSession session = open(directory);
+        session.source = resolve(source);
+        return session;
+    }
+
     /**
-     * Блокирует поток до завершения приложения. Enter — штатный выход; если stdin закрыт
-     * (запуск без терминала), ждём бесконечно — до сигнала завершения.
+     * Режим 4: снимает слепок и запоминает копию ключа до выхода. Вызывать сразу после
+     * успешной расшифровки; до этого момента (и при ошибке) синхронизация не выполняется.
      */
+    public synchronized void armSync(byte[] keyBytes) throws IOException {
+        if (source == null) {
+            throw new IllegalStateException("Сеанс открыт без синхронизации.");
+        }
+        Map<String, SourceSync.FileState> snapshot = SourceSync.snapshot(directory);
+        this.key = keyBytes.clone();
+        this.baseline = snapshot;
+    }
+
     public void awaitTermination() {
-        System.out.println("Расшифровка завершена. Приложение работает: для выхода нажмите Enter "
+        System.out.println(source != null
+                ? "Расшифровка завершена. Приложение работает: для выхода нажмите Enter или Ctrl+C — "
+                + "изменения будут перенесены в зашифрованный каталог, "
+                + "после чего расшифрованный каталог будет безвозвратно удалён."
+                : "Расшифровка завершена. Приложение работает: для выхода нажмите Enter "
                 + "или Ctrl+C — расшифрованный каталог будет безвозвратно удалён.");
         String line;
         try {
@@ -111,6 +138,7 @@ public final class DecryptionSession implements AutoCloseable {
         if (destroyed) {
             return;
         }
+        syncBack();                                   // однократно; ошибка не мешает удалению
         boolean deleted = false;
         for (int i = 0; i < MAX_ATTEMPTS && !deleted; i++) {
             deleted = SecureDeleter.deleteRecursively(directory);
@@ -121,6 +149,26 @@ public final class DecryptionSession implements AutoCloseable {
         } else {
             System.err.println("Не удалось полностью удалить расшифрованные данные. "
                     + "Повторная попытка будет при следующем запуске.");
+        }
+    }
+
+    private void syncBack() {
+        if (source == null || key == null || baseline == null) {
+            return;
+        }
+        try {
+            System.out.println("Синхронизация изменений с зашифрованным каталогом...");
+            SourceSync.Outcome outcome = SourceSync.apply(source, directory, baseline, key);
+            System.out.println(outcome == SourceSync.Outcome.SKIPPED
+                    ? "Синхронизация пропущена."
+                    : "Синхронизация завершена.");
+        } catch (Exception e) {
+            // Текст исключения может содержать пути — не выводим.
+            System.err.println("Синхронизация не удалась: изменения не сохранены.");
+        } finally {
+            Arrays.fill(key, (byte) 0);
+            key = null;
+            baseline = null;
         }
     }
 

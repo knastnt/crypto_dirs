@@ -2,6 +2,7 @@ package app;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Optional;
 
 public class Application {
@@ -17,22 +18,19 @@ public class Application {
 
     // ---------- Меню ----------
 
+
     private static void runMainMenu() throws Exception {
         System.out.println("1 - Зашифровать каталог");
         System.out.println("2 - Расшифровать каталог");
         System.out.println("3 - Расшифровать каталог с последующим безопасным удалением расшифрованных файлов");
+        System.out.println("4 - То же, что 3, но перед удалением изменения переносятся в зашифрованный каталог");
 
-        int choice = ConsoleInput.readInt("Выберите режим (1-3): ", 1, 3);
+        int choice = ConsoleInput.readInt("Выберите режим (1-4): ", 1, 4);
         switch (choice) {
-            case 1:
-                encryptDirectory();
-                break;
-            case 2:
-                decryptDirectory();
-                break;
-            default:
-                decryptDirectoryAndWipeOnExit();
-                break;
+            case 1 -> encryptDirectory();
+            case 2 -> decryptDirectory();
+            case 3 -> decryptDirectoryAndWipeOnExit(false);
+            default -> decryptDirectoryAndWipeOnExit(true);
         }
     }
 
@@ -128,6 +126,23 @@ public class Application {
                 continue;
             }
             return pair.get();
+        }
+    }
+
+    private static void decryptDirectoryAndWipeOnExit(boolean syncBack) throws Exception {
+        PathPair dirs = chooseDecryptionDirectories(true);
+        try (DecryptionSession session = syncBack
+                ? DecryptionSession.open(dirs.source(), dirs.target())
+                : DecryptionSession.open(dirs.target())) {
+            byte[] key = CryptoRunner.run(Mode.DECRYPT, dirs.source(), dirs.target(), syncBack);
+            if (syncBack) {
+                try {
+                    session.armSync(key);
+                } finally {
+                    Arrays.fill(key, (byte) 0);   // в сессии хранится собственная копия
+                }
+            }
+            session.awaitTermination();
         }
     }
 }

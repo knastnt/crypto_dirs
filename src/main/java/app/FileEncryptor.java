@@ -28,7 +28,7 @@ public class FileEncryptor {
     private static final String TRANSFORMATION = "AES/CTR/NoPadding";
     private static final int BUFFER_SIZE = 64 * 1024;
     private static final int IV_LENGTH = 16;
-    private static final String ENC_EXT = ".tmp";
+    static final String ENC_EXT = ".tmp";
 
     public static void processDir(Mode mode, Path sourceDir, Path targetDir, byte[] keyBytes) throws Exception {
         if (!Files.isDirectory(sourceDir)) {
@@ -162,7 +162,7 @@ public class FileEncryptor {
 
     // ---------- НИЗКОУРОВНЕВЫЕ ОПЕРАЦИИ ----------
 
-    private static void encryptFile(Path source, Path target, byte[] keyBytes, Properties props) throws Exception {
+    static void encryptFile(Path source, Path target, byte[] keyBytes, Properties props) throws Exception {
         byte[] iv = new byte[IV_LENGTH];
         new SecureRandom().nextBytes(iv);
 
